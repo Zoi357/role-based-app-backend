@@ -1,0 +1,98 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+}
+
+.navbar {
+    background: #1f2933;
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+        color: black;
+
+    background: white;
+    min-width: 160px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.dropdown-content a {
+    display: block;
+    padding: 10px;
+    color: black;
+    cursor: pointer;
+}
+
+.dropdown-content a:hover {
+    background: #f0f0f0;
+}
+
+.form-box {
+    background: white;
+    padding: 25px;
+    width: 300px;
+    margin: 60px auto;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+input, select {
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+button {
+    padding: 8px 12px; 
+    cursor: pointer;
+}
+
+.section {
+    display: none;
+    padding: 30px;
+}
+
+.employees-header {
+    display: flex;
+    justify-content: space-between; 
+}
+
+.employees-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.employees-table th, 
+.employees-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+.employee-form {
+    margin-top: 15px;
+}
+
+.profile-box {
+    background: white;
+    padding: 20px;
+    width: 300px;
+}
