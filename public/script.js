@@ -1,573 +1,151 @@
+let currentUser = null;
+const STORAGE_KEY = 'ipt_demo_v1';
 
-let employees = JSON.parse(localStorage.getItem('employees')) || [];
-let departments = JSON.parse(localStorage.getItem('departments')) || [];
-let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
+window.db = {
+    accounts: [],
+    departments: [],
+    employees: [],
+    requests: []
+};
 
-// DOM references (ensure elements exist before use)
-const loginUsername = document.getElementById('loginUsername');
-const loginPassword = document.getElementById('loginPassword');
-const loginSection = document.getElementById('loginSection');
-const registerSection = document.getElementById('registerSection');
-const navbar = document.getElementById('navbar');
-const profileEmail = document.getElementById('profileEmail');
-const profileRole = document.getElementById('profileRole');
-const accountsSection = document.getElementById('accountsSection');
-const employeesSection = document.getElementById('employeesSection');
-const departmentsSection = document.getElementById('departmentsSection');
-const myRequestsSection = document.getElementById('myRequestsSection');
-const homeSection = document.getElementById('homeSection');
-const accountsTable = document.getElementById('accountsTable');
-const employeeTable = document.getElementById('employeeTable');
-const employeeForm = document.getElementById('employeeForm');
-const empId = document.getElementById('empId');
-const empName = document.getElementById('empName');
-const empPosition = document.getElementById('empPosition');
-const empDept = document.getElementById('empDept');
-const departmentForm = document.getElementById('departmentForm');
-const deptName = document.getElementById('deptName');
-const deptHead = document.getElementById('deptHead');
-const departmentsTable = document.getElementById('departmentsTable');
-const myRequestsTable = document.getElementById('myRequestsTable');
-const dropdownMenu = document.getElementById('dropdownMenu');
-const dropdownButton = document.getElementById('dropdownButton');
-const addEmployeeBtn = document.getElementById('addEmployeeBtn');
-const addDepartmentBtn = document.getElementById('addDepartmentBtn');
-const userForm = document.getElementById('userForm');
-const userIdInput = document.getElementById('userId');
-const userUsernameInput = document.getElementById('userUsername');
-const userEmailInput = document.getElementById('userEmail');
-const userRoleSelect = document.getElementById('userRole');
-const userStatusSelect = document.getElementById('userStatus');
-
-let accountsCache = [];
-
-function updateDropdown(){
-    if (!currentUser || !dropdownMenu || !dropdownButton) return;
-    dropdownButton.textContent = (currentUser.role === 'admin' ? 'Admin' : 'User') + ' ▼';
-    const links = [
-        '<a onclick="showHome()">Home</a>',
-        '<a onclick="showEmployees()">Employees</a>',
-        '<a onclick="showDepartments()">Departments</a>',
-        '<a onclick="showMyRequests()">My Requests</a>',
-        '<a onclick="showProfile()">Profile</a>',
-        currentUser.role === 'admin' ? '<a onclick="showAccounts()">Accounts</a>' : '',
-        '<a onclick="logout()">Logout</a>'
-    ];
-    dropdownMenu.innerHTML = links.filter(Boolean).join('');
-}    
-
-function updateRoleUI(){
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    if (addEmployeeBtn) addEmployeeBtn.style.display = isAdmin ? 'inline-block' : 'none';
-    if (addDepartmentBtn) addDepartmentBtn.style.display = isAdmin ? 'inline-block' : 'none';
-}
-
-function openUserFormById(id, isAdminEdit) {
-    const u = accountsCache.find(a => a.id === id);
-    if (!u) return alert('User not found');
-    openUserForm(u, isAdminEdit);
-}
-
-function openMyProfile() {
-    if (!currentUser) return alert('Not signed in');
-    // If current user came from a server-registered account, use accountsCache data when available
-    const cached = accountsCache.find(a => a.id === currentUser.id);
-    if (cached) return openUserForm(cached, false);
-    // Otherwise open form with currentUser data
-    openUserForm(currentUser, false);
-}
-
-function openUserForm(user, isAdminEdit) {
-    if (!userForm) return;
-    userIdInput.value = user.id;
-    userUsernameInput.value = user.username || '';
-    userEmailInput.value = user.email || '';
-    userRoleSelect.value = user.role || 'user';
-    userStatusSelect.value = user.status || 'active';
-
-    // If not admin editing or editing own profile as admin, limit role and status editing
-    if (!isAdminEdit) {
-        userRoleSelect.disabled = true;
-        userStatusSelect.disabled = true;
+/* STORAGE */
+function loadFromStorage() {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (data) {
+        window.db = data;
     } else {
-        // Admin editing someone else: allow role/status change, but if editing self disallow role/status change
-        const isSelf = (currentUser && currentUser.id === user.id);
-        userRoleSelect.disabled = isSelf;
-        userStatusSelect.disabled = isSelf;
-    }
-
-    userForm.style.display = 'block';
-}
-
-function closeUserForm() {
-    if (!userForm) return;
-    userForm.style.display = 'none';
-    userIdInput.value = '';
-    userUsernameInput.value = '';
-    userEmailInput.value = '';
-    userRoleSelect.value = 'user';
-    userRoleSelect.disabled = false;
-}
-
-async function saveUser() {
-    const id = parseInt(userIdInput.value);
-    const username = userUsernameInput.value && userUsernameInput.value.trim();
-    const email = userEmailInput.value && userEmailInput.value.trim();
-    const role = userRoleSelect.value;
-
-    if (!username || !email) return alert('Username and email are required');
-    if (!email.endsWith('@example.com')) return alert('Email must be @example.com');
-
-    try {
-        if (currentUser && currentUser.role === 'admin' && userRoleSelect.disabled === false) {
-            // Admin edit (role/status may be changed)
-            const res = await fetch(`/api/users/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-                body: JSON.stringify({ username, email, role, status: userStatusSelect.value })
-            });
-            const data = await res.json();
-            if (!res.ok) return alert('Update failed: ' + (data.error || res.statusText));
-            alert('User updated');
-        } else if (currentUser && currentUser.id === id) {
-            // Update own profile
-            const res = await fetch('/api/profile', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-                body: JSON.stringify({ username, email })
-            });
-            const data = await res.json();
-            if (!res.ok) return alert('Update failed: ' + (data.error || res.statusText));
-            alert('Profile updated');
-            // update currentUser reference if changed
-            currentUser.username = data.user.username;
-            currentUser.email = data.user.email;
-            localStorage.setItem('currentUser', JSON.stringify(currentUser));
-            updateDropdown();
-            updateRoleUI();
-        } else {
-            // Fallback - admin editing but role disabled (editing self) handled above
-            alert('Not authorized to perform this action');
-            return;
-        }
-
-        closeUserForm();
-        showAccounts();
-    } catch (err) {
-        alert('Network error');
-    }
-}
-
-async function showAccounts() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-
-    hideSections();
-    accountsSection.style.display = "block";
-    try {
-        const res = await fetch('/api/users', { headers: getAuthHeader() });
-        if (!res.ok) {
-            const data = await res.json();
-            return alert('Failed to load accounts: ' + (data.error || res.statusText));
-        }
-        const data = await res.json();
-        accountsCache = data.users || [];
-        renderAccounts(accountsCache);
-    } catch (err) {
-        alert('Network error');
-    }
-}
-
-function renderAccounts(accounts) {
-    if (!accounts || accounts.length === 0) {
-        accountsTable.innerHTML =
-            `<tr><td colspan="6" style="text-align:center">No accounts.</td></tr>`;
-        return;
-    }
-
-    accountsTable.innerHTML = "";
-    accounts.forEach((u, index) => {
-        const me = currentUser && (u.username === currentUser.username || u.id === currentUser.id);
-        let actionBtn = '';
-
-        // Admins can edit everyone; can delete others (server protects self-delete & last-admin)
-        if (currentUser && currentUser.role === 'admin') {
-            actionBtn = `<button onclick="openUserFormById(${u.id}, true)">Edit</button>` + (!me ? ` <button onclick="deleteUser(${u.id}, ${JSON.stringify(u.email)}, ${JSON.stringify(u.username)})">Delete</button>` : '');
-        } else if (me) {
-            // Non-admins can edit their own profile
-            actionBtn = `<button onclick="openUserFormById(${u.id}, false)">Edit</button>`;
-        }
-
-        accountsTable.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${u.username}${me ? ' (You)' : ''}</td>
-                <td>${u.email || ''}</td>
-                <td>${u.role}</td>
-                <td>${u.status ? (u.status.charAt(0).toUpperCase() + u.status.slice(1)) : 'Unknown'}</td>
-                <td>${actionBtn}</td>
-            </tr>
-        `;
-    });
-}
-
-async function deleteUser(id, email, username) {
-    if (!confirm(`Are you sure you want to delete ${username} (${email})? This will remove the account.`)) return;
-    try {
-        const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: getAuthHeader() });
-        const data = await res.json();
-        if (!res.ok) return alert('Delete failed: ' + (data.error || res.statusText));
-        alert('User deleted successfully');
-        showAccounts();
-    } catch (err) {
-        alert('Network error');
-    }
-}
-
-async function login() {
-    if (!loginUsername || !loginPassword) return alert('Login inputs not found');
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: loginUsername.value, password: loginPassword.value })
+        window.db.accounts.push({
+            firstName: 'Admin',
+            lastName: 'User',
+            email: 'admin@example.com',
+            password: 'Password123!',
+            verified: true,
+            role: 'admin'
         });
-
-        const data = await res.json();
-        if (!res.ok) return alert('Login failed: ' + (data.error || 'Unknown'));
-
-        sessionStorage.setItem('authToken', data.token);
-        localStorage.setItem('authToken', data.token);
-        currentUser = data.user;
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-        enterPortal();
-    } catch (err) {
-        alert('Network error');
+        window.db.departments.push({ id: 1, name: 'Engineering' });
+        window.db.departments.push({ id: 2, name: 'HR' });
+        saveToStorage();
     }
 }
 
-function getAuthHeader(){
-    const token = sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
-    return token ? { Authorization: `Bearer ${token}` } : {};
+function saveToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
 }
 
-async function loadAdminDashboard(){    
-    const res = await fetch('http://localhost:3000/api/admin/dashboard',{
-        headers: getAuthHeader()
-    });
-    if (res.ok){
-        const data = await res.json();
-        document.getElementById('content').innerText=data.message;
-    }else{
-        document.getElementById('content').innerText='Access denied';
+/* ROUTING */
+function navigateTo(hash) {
+    window.location.hash = hash;
+}
+
+function handleRouting() {
+    const hash = window.location.hash || '#/';
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+    if (hash === '#/register') show('register-page');
+    else if (hash === '#/verify-email') show('verify-email-page');
+    else if (hash === '#/login') show('login-page');
+    else if (hash === '#/profile') {
+        if (!currentUser) return navigateTo('#/login');
+        show('profile-page'); renderProfile();
     }
-}
-
-
-async function register() {
-    if (!regEmail.value || !regEmail.value.endsWith('@example.com'))
-        return alert('Email must be @example.com');
-
-    try {
-        const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: regUsername.value, email: regEmail.value, password: regPassword.value, role: regRole.value })
-        });
-        const data = await res.json();
-        if (!res.ok) return alert('Register failed: ' + (data.error || 'Unknown'));
-        alert('Registered successfully! Please log in.');
-        showLogin();
-    } catch (err) {
-        alert('Network error');
+    else if (hash === '#/requests') {
+        if (!currentUser) return navigateTo('#/login');
+        show('requests-page');
     }
+    else if (['#/employees','#/accounts','#/departments'].includes(hash)) {
+        if (!currentUser || currentUser.role !== 'admin') return navigateTo('#/');
+        show(hash.replace('#/','') + '-page');
+    }
+    else show('home-page');
 }
 
-
-function enterPortal() {
-    navbar.style.display = "flex";
-    loginSection.style.display = "none";
-    registerSection.style.display = "none";
-    updateDropdown();
-    updateRoleUI();
-    showHome();
+function show(id) {
+    document.getElementById(id).classList.add('active');
 }
 
-function showLogin() {
-    registerSection.style.display = "none";
-    loginSection.style.display = "block";
-}
-
-function showRegister() {
-    loginSection.style.display = "none";
-    registerSection.style.display = "block";
-}
-
-function hideSections() {
-    homeSection.style.display = "none";
-    employeesSection.style.display = "none";
-    profileSection.style.display = "none";
-    departmentsSection.style.display = "none";
-    myRequestsSection.style.display = "none";
-    // Also hide accounts and any open user form to avoid leftover visibility
-    if (accountsSection) accountsSection.style.display = 'none';
-    if (userForm) userForm.style.display = 'none';
-}
-function populateDepartmentDropdown(){
-    empDept.innerHTML = '<option value="">Select Department</option>';
-
-    departments.forEach(dept => {
-        empDept.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
-    });
-}
-
-function showHome() {
-    hideSections();
-    homeSection.style.display = "block";
-}
-
-function showEmployees() {
-    hideSections();
-    employeesSection.style.display = "block";
-    renderEmployees();
-}
-
-function showProfile() {
-    hideSections();
-    profileSection.style.display = "block";
-    profileEmail.textContent = currentUser.email;
-    profileRole.textContent = currentUser.role;
-}
-
-
-
-function showDepartments() {
-    hideSections();
-    departmentsSection.style.display = "block";
-    renderDepartments();
-}
-
-function showMyRequests() {
-    hideSections();
-    myRequestsSection.style.display = "block";
-    renderMyRequests();
+/* AUTH */
+function setAuthState(isAuth, user = null) {
+    currentUser = user;
+    document.body.classList.toggle('authenticated', isAuth);
+    document.body.classList.toggle('not-authenticated', !isAuth);
+    document.body.classList.toggle('is-admin', user && user.role === 'admin');
+    if (user) document.getElementById('nav-username').textContent = user.firstName;
 }
 
 function logout() {
-    localStorage.removeItem('currentUser');
-    location.reload();
+    localStorage.removeItem('auth_token');
+    setAuthState(false);
+    navigateTo('#/');
 }
 
-function toggleDropdown() {
-    dropdownMenu.style.display =
-        dropdownMenu.style.display === "block" ? "none" : "block";
-}
+/* EVENTS */
+document.addEventListener('DOMContentLoaded', () => {
+    loadFromStorage();
 
-function toggleEmployeeForm(editIndex = null) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    populateDepartmentDropdown();
-    if (editIndex !== null) {
-        const emp = employees[editIndex];
-        empId.value = emp.id;
-        empName.value = emp.name;
-        empPosition.value = emp.position;
-        empDept.value = emp.dept;
-        employeeForm.dataset.editIndex = editIndex;
-    } else {
-        empId.value = '';
-        empName.value = '';
-        empPosition.value = '';
-        empDept.value = '';
-        delete employeeForm.dataset.editIndex;
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+        const user = window.db.accounts.find(a => a.email === token);
+        if (user) setAuthState(true, user);
     }
 
-    employeeForm.style.display =
-        employeeForm.style.display === "block" ? "none" : "block";
-}
+    handleRouting();
+});
 
-function addOrUpdateEmployee() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    const editIndex = employeeForm.dataset.editIndex;
+window.addEventListener('hashchange', handleRouting);
 
-    if (editIndex !== undefined) {
-        employees[editIndex] = {
-            id: empId.value,
-            name: empName.value,
-            position: empPosition.value,
-            dept: empDept.value
-        };
-    } else {
-        employees.push({
-            id: empId.value,
-            name: empName.value,
-            position: empPosition.value,
-            dept: empDept.value
-        });
-    }
+/* REGISTER */
+document.getElementById('register-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const email = registerEmail.value;
+    if (window.db.accounts.some(a => a.email === email)) return alert('Email exists');
 
-    localStorage.setItem('employees', JSON.stringify(employees));
-    renderEmployees();
-    toggleEmployeeForm();
-}
-
-function renderEmployees() {
-    if (employees.length === 0) {
-        employeeTable.innerHTML = `<tr><td colspan="5" style="text-align:center">No employees.</td></tr>`;
-        return;
-    }
-
-    employeeTable.innerHTML = "";
-    employees.forEach((e, index) => {
-        const canEdit = currentUser && currentUser.role === 'admin';
-        employeeTable.innerHTML += `
-            <tr>
-                <td>${e.id}</td>
-                <td>${e.name}</td>
-                <td>${e.position}</td>
-                <td>${e.dept}</td>
-                <td>
-                    ${canEdit ? `<button onclick="toggleEmployeeForm(${index})">Edit</button> <button onclick="deleteEmployee(${index})">Delete</button>` : ''}
-                </td>
-            </tr>
-        `;
+    window.db.accounts.push({
+        firstName: firstName.value,
+        lastName: lastName.value,
+        email,
+        password: registerPassword.value,
+        verified: false,
+        role: 'user'
     });
+    saveToStorage();
+    localStorage.setItem('unverified_email', email);
+    navigateTo('#/verify-email');
+});
+
+/* VERIFY */
+document.getElementById('verify-btn').addEventListener('click', () => {
+    const email = localStorage.getItem('unverified_email');
+    const user = window.db.accounts.find(a => a.email === email);
+    if (user) {
+        user.verified = true;
+        saveToStorage();
+        localStorage.removeItem('unverified_email');
+        navigateTo('#/login');
+    }
+});
+
+/* LOGIN */
+document.getElementById('login-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const user = window.db.accounts.find(a =>
+        a.email === loginEmail.value &&
+        a.password === loginPassword.value &&
+        a.verified
+    );
+
+    if (!user) return alert('Invalid login');
+    localStorage.setItem('auth_token', user.email);
+    setAuthState(true, user);
+    navigateTo('#/profile');
+});
+
+document.getElementById('logout-btn').addEventListener('click', logout);
+
+/* PROFILE */
+function renderProfile() {
+    profile-info.innerHTML =`
+        <p><strong>Name:</strong> ${currentUser.firstName} ${currentUser.lastName}</p>
+        <p><strong>Email:</strong> ${currentUser.email}</p>
+        <p><strong>Role:</strong> ${currentUser.role}</p>
+    `;
 }
-
-function deleteEmployee(index) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    if (!confirm("Are you sure you want to delete this employee?")) return;
-    employees.splice(index, 1);
-    localStorage.setItem('employees', JSON.stringify(employees));
-    renderEmployees();
-}
-
-function toggleDepartmentForm(editIndex = null) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    if (!window.departmentForm) return;
-    if (editIndex !== null) {
-        const dept = departments[editIndex];
-        deptName.value = dept.name;
-        deptHead.value = dept.head;
-        departmentForm.dataset.editIndex = editIndex;
-    } else {
-        deptName.value = '';
-        deptHead.value = '';
-        delete departmentForm.dataset.editIndex;
-    }
-    departmentForm.style.display =
-        departmentForm.style.display === "block" ? "none" : "block";
-}
-
-function addOrUpdateDepartment() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    const editIndex = departmentForm.dataset.editIndex;
-
-    if (editIndex !== undefined) {
-        departments[editIndex] = {
-            name: deptName.value,
-            head: deptHead.value
-        };
-    } else {
-        departments.push({
-            name: deptName.value,
-            head: deptHead.value
-        });
-    }
-
-    localStorage.setItem('departments', JSON.stringify(departments));
-    renderDepartments();
-    toggleDepartmentForm();
-}
-
-
-
-function renderDepartments() {
-    if (!window.departmentsTable) return;
-    if (departments.length === 0) {
-        departmentsTable.innerHTML = `<tr><td colspan="3" style="text-align:center">No departments.</td></tr>`;
-        return;
-    }
-
-    departmentsTable.innerHTML = '';
-    departments.forEach((d, index) => {
-        const canEdit = currentUser && currentUser.role === 'admin';
-        departmentsTable.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${d.name}</td>
-                <td>${d.head}</td>
-                <td>
-                    ${canEdit ? `<button onclick="toggleDepartmentForm(${index})">Edit</button> <button onclick="deleteDepartment(${index})">Delete</button>` : ''}
-                </td>
-            </tr>
-        `;
-    });
-}
-
-function deleteDepartment(index) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert('Access denied. Admins only.');
-        return;
-    }
-    if (!confirm("Are you sure you want to delete this department?")) return;
-    departments.splice(index, 1);
-    localStorage.setItem('departments', JSON.stringify(departments));
-    renderDepartments();
-}
-
-let myRequests = JSON.parse(localStorage.getItem('myRequests')) || [];
-
-function renderMyRequests() {
-    if (!window.myRequestsTable) return;
-    if (myRequests.length === 0) {
-        myRequestsTable.innerHTML = `<tr><td colspan="3" style="text-align:center">No requests.</td></tr>`;
-        return;
-    }
-
-    myRequestsTable.innerHTML = '';
-    myRequests.forEach((r, index) => {
-        myRequestsTable.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${r.title}</td>
-                <td>${r.status}</td>
-                <td>
-                    <button onclick="deleteRequest(${index})">Delete</button>
-                </td>
-            </tr>
-        `;
-    });
-}
-
-function deleteRequest(index) {
-    if (!confirm("Are you sure you want to delete this request?")) return;
-    myRequests.splice(index, 1);
-    localStorage.setItem('myRequests', JSON.stringify(myRequests));
-    renderMyRequests();
-}
-
-window.onload = function() {
-    if (currentUser) {
-        enterPortal();
-    } else {
-        loginSection.style.display = "block";
-        navbar.style.display = "none";
-    }
-};
