@@ -9,14 +9,10 @@ const SECRET_KEY = 'hahaha123';
 
 app.use(cors({
     origin: ['http://localhost:3000']
-}
-
-));
+}));
 
 app.use(express.json());
-
 app.use(express.static('public'));
-
 
 let users = [
     {id: 1, username: 'admin', email: 'admin@example.com', password: bcrypt.hashSync('adminpass', 10), role: 'admin', registered: false, status: 'active'},
@@ -27,7 +23,6 @@ if (!users[0].password.includes('$2a$')) {
     users[0].password = bcrypt.hashSync('adminpass', 10);
     users[1].password = bcrypt.hashSync('user1pass', 10);   
 }
-
 
 app.post('/api/register', async (req, res) => {
     const {username, email, password, role = 'user'} = req.body;
@@ -51,14 +46,12 @@ app.post('/api/register', async (req, res) => {
         email,
         password: hashedPassword,
         role,
-        registered: true, 
+        registered: true,
         status: 'active'
-
     };
 
     users.push(newUser);
     res.status(201).json({message: 'User registered successfully', user: { id: newUser.id, username: newUser.username, role: newUser.role, email: newUser.email }});
-
 });
 
 app.post('/api/login', async (req, res) => {
@@ -69,11 +62,10 @@ app.post('/api/login', async (req, res) => {
         return  res.status(401).json({error: 'Invalid credentials'});
     }
 
-    const token= jwt.sign(
-        {id:user.id, username: user.username, role: user.role},
+    const token = jwt.sign(
+        {id: user.id, username: user.username, role: user.role},
         SECRET_KEY,
         {expiresIn: '1h'}
-
     );
     
     res.json({token, user: { id: user.id, username: user.username, role: user.role, email: user.email }});
@@ -163,8 +155,6 @@ app.get('/api/content/guest', (req, res) => {
     res.json({message: 'Welcome, guest! Here is some public content.'});
 });
 
-
-
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -174,19 +164,16 @@ function authenticateToken(req, res, next) {
     }
 
     jwt.verify(token, SECRET_KEY, (err, user) => {
-        if (err) return res.status(403).json({error: 'Invalid or expiredtoken'});
+        if (err) return res.status(403).json({error: 'Invalid or expired token'});
         req.user = user;
         next();
     });
 }
 
-
-
 function authorizeRole(role) {
     return (req, res, next) => {
         if (req.user.role !== role) {   
             return res.status(403).json({error: 'Access denied: insufficient permissions'});
-
         }
         next();
     };
